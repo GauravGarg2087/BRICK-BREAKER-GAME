@@ -1,178 +1,198 @@
-#include <SDL2/SDL.h>
-#include <bits/stdc++.h>
+#include<SDL2/SDL.h>
+#include<bits/stdc++.h>
 using namespace std;
-class Paddle{
-    public:
-        SDL_Rect rect;
-        int speed;
-        Paddle(){
-            rect = {350,550,100,20};
-            speed=8;
-        }
-        void moveLeft(){
-            if(rect.x>0) rect.x -= speed;
-        }
-        void moveRight(){
-            if(rect.x + rect.w< 800){
-                rect.x+= speed;
-            }
-        }
-        void draw(SDL_Renderer* renderer){
-            SDL_RenderFillRect(renderer,&rect);
-        }
-};
-class Ball{
-    public:
-        int x;
-        int y;
-        int radius;
-        int vx;
-        int vy;
-        Ball(){
-            x=400;
-            y=300;
-            radius=10;
-            vx=4;
-            vy=-4;
-        }
-        void move(){
-            x+=vx;
-            y+=vy;
-        }
-        void draw(SDL_Renderer * renderer){
-            SDL_Rect rect ={x-radius,y-radius,radius*2,radius*2};
-            SDL_RenderFillRect(renderer,&rect);
-        }
-        SDL_Rect getRect(){
-            SDL_Rect rect={x-radius,y-radius,radius*2,radius*2};
-            return rect;
-        }
-        void bounce(){
-            if(x-radius<=0){
-                vx=-vx;
-            }
-            if(x+radius>=800){
-                vx=-vx;
-            }
-            if(y-radius<=0){
-                vy=-vy;
-            }
-        }
-};
-class Brick{
-    public:
-        SDL_Rect rect;
-        bool alive;
-        Brick(int x,int y){
-            rect={x,y,70,25};
-            alive=true;
-        }
-        void draw(SDL_Renderer* renderer){
-            if(alive){
-                SDL_RenderFillRect(renderer,&rect);
-            }
-        }
-};
+
+#include"Constants.h"
+#include"Colors.h"
+#include"SDLSetup.h"
+#include"Paddle.h"
+#include"Ball.h"
+#include"Brick.h"
+
 int main(){
-    if(SDL_Init(SDL_INIT_VIDEO)!=0){
-        cout<<SDL_GetError()<<endl;
+    SDL_Window*window;
+    SDL_Renderer*renderer;
+
+    if(!initializeSDL(window,renderer)){
         return 1;
     }
-    SDL_Window*window=SDL_CreateWindow(
-        "Brick Breaker",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        800,
-        600,
-        SDL_WINDOW_SHOWN
-    );
-    if(window==nullptr){
-        cout<<SDL_GetError()<<endl;
-        SDL_Quit();
-        return 1;
-    }
-    SDL_Renderer* renderer=SDL_CreateRenderer(
-        window,
-        -1,
-        SDL_RENDERER_ACCELERATED
-    );
-    if(renderer==nullptr){
-        cout<<SDL_GetError()<<endl;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
+
     bool running=true;
+    bool win=true;
     SDL_Event event;
     Paddle paddle;
     Ball ball;
-    vector <Brick> bricks;
+    vector<Brick> bricks;
+
     for(int row=0;row<3;row++){
+        SDL_Color color;
+
+        if(row==0){
+            color=RED_BRICK;
+        }
+        else if(row==1){
+            color=GREEN_BRICK;
+        }
+        else{
+            color=BLUE_BRICK;
+        }
+
         for(int col=0;col<10;col++){
-            bricks.push_back(Brick(30+col*75,50+row*35));
+            bool strong=(col==3||col==6);
+            SDL_Color brickColor=color;
+
+            if(strong){
+                brickColor=GRAY_BRICK;
+            }
+
+            bricks.push_back(
+                Brick(
+                    30+col*75,
+                    50+row*35,
+                    brickColor,
+                    strong
+                )
+            );
         }
     }
-    bool win=true;
+
     while(running){
         while(SDL_PollEvent(&event)){
             if(event.type==SDL_QUIT){
                 running=false;
             }
         }
-        const Uint8* keyboard = SDL_GetKeyboardState(NULL);
+
+        const Uint8*keyboard=SDL_GetKeyboardState(NULL);
+
         if(keyboard[SDL_SCANCODE_LEFT]){
             paddle.moveLeft();
         }
+
         if(keyboard[SDL_SCANCODE_RIGHT]){
             paddle.moveRight();
         }
+
         ball.move();
         ball.bounce();
-        if(ball.y+ball.radius>=600){
+
+        if(ball.y+ball.radius>=SCREEN_HEIGHT){
             running=false;
         }
-        SDL_Rect ballRect = ball.getRect();
+
+        SDL_Rect ballRect=ball.getRect();
+
         if(SDL_HasIntersection(&ballRect,&paddle.rect)){
-            ball.vy=-ball.vy;
+            ball.vy=-abs(ball.vy);
             ball.y=paddle.rect.y-ball.radius;
+
+            int paddleCenter=paddle.rect.x+paddle.rect.w/2;
+            int ballCenter=ball.x;
+            int diff=ballCenter-paddleCenter;
+
+            ball.vx=diff/10;
+
+            if(ball.vx==0){
+                ball.vx=(rand()%2==0)?1:-1;
+            }
+
+            if(ball.vx>6){
+                ball.vx=6;
+            }
+
+            if(ball.vx<-6){
+                ball.vx=-6;
+            }
         }
-        for(auto &brick: bricks){
+
+        for(auto &brick:bricks){
             if(!brick.alive){
                 continue;
             }
+
             if(SDL_HasIntersection(&ballRect,&brick.rect)){
-                brick.alive=false;
+                if(!brick.unbreakable){
+                    brick.alive=false;
+                }
+
                 ball.vy=-ball.vy;
+                ball.vx+=rand()%3-1;
+
+                if(ball.vx>6){
+                    ball.vx=6;
+                }
+
+                if(ball.vx<-6){
+                    ball.vx=-6;
+                }
+
+                if(ball.vx==0){
+                    ball.vx=(rand()%2==0)?1:-1;
+                }
+
                 break;
             }
         }
-        win =true;
-        for(auto &brick: bricks){
-            if(brick.alive){
+
+        win=true;
+
+        for(auto &brick:bricks){
+            if(brick.alive&&!brick.unbreakable){
                 win=false;
                 break;
             }
         }
+
         if(win){
             running=false;
         }
-        SDL_SetRenderDrawColor(renderer,0,0,0,255);
+
+        SDL_SetRenderDrawColor(
+            renderer,
+            BACKGROUND.r,
+            BACKGROUND.g,
+            BACKGROUND.b,
+            BACKGROUND.a
+        );
+
         SDL_RenderClear(renderer);
-        SDL_SetRenderDrawColor(renderer,255,255,255,255);
+
         for(auto &brick:bricks){
             brick.draw(renderer);
         }
+
+        SDL_SetRenderDrawColor(
+            renderer,
+            PADDLE_COLOR.r,
+            PADDLE_COLOR.g,
+            PADDLE_COLOR.b,
+            PADDLE_COLOR.a
+        );
+
         paddle.draw(renderer);
-        
+
+        SDL_SetRenderDrawColor(
+            renderer,
+            BALL_COLOR.r,
+            BALL_COLOR.g,
+            BALL_COLOR.b,
+            BALL_COLOR.a
+        );
+
         ball.draw(renderer);
+
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
-    if(win)cout<<"YOU WIN"<<endl;
-    else cout<<"GAME OVER"<<endl;
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+
+    if(win){
+        cout<<"YOU WIN"<<endl;
+    }
+    else{
+        cout<<"GAME OVER"<<endl;
+    }
+
+    destroySDL(window,renderer);
     return 0;
 }
-//g++ main.cpp -o game $(sdl2-config --cflags --libs)
+//COMPILE: g++ main.cpp -o game $(sdl2-config --cflags --libs)
